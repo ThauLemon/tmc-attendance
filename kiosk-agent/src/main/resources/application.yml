@@ -1,0 +1,39 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: kiosk-agent
+  datasource:
+    url: jdbc:sqlite:${KIOSK_DB_PATH:kiosk.db}
+    driver-class-name: org.sqlite.JDBC
+    hikari:
+      # Một connection duy nhất: tránh lỗi "database is locked" khi luồng quét và sync worker cùng ghi.
+      maximum-pool-size: 1
+      connection-init-sql: PRAGMA busy_timeout=5000
+  sql:
+    init:
+      mode: always
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: tmc
+    password: tmc
+    # Chỉ đánh dấu SYNCED khi broker ack (NFR-02).
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+
+kiosk:
+  kiosk-id: kiosk-local
+  site-id: site-01
+  simulator-mode: OK
+  confirm-timeout: 5s
+  sync-interval-ms: 2000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

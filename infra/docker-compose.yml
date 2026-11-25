@@ -1,0 +1,107 @@
+# Chạy toàn hệ thống: docker compose -f infra/docker-compose.yml up --build
+# Mật khẩu ở đây chỉ dùng cho môi trường dev/demo.
+
+name: tmc-attendance
+
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    environment:
+      RABBITMQ_DEFAULT_USER: tmc
+      RABBITMQ_DEFAULT_PASS: tmc
+    ports:
+      - "5672:5672"
+      - "15672:15672"   # Giao diện quản lý: http://localhost:15672 (tmc / tmc)
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: attendance
+      POSTGRES_USER: tmc
+      POSTGRES_PASSWORD: tmc
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tmc -d attendance"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  identity-service:
+    build:
+      context: ..
+      args:
+        MODULE: identity-service
+    environment:
+      SERVER_PORT: 8080
+    ports:
+      - "8081:8080"
+
+  attendance-service:
+    build:
+      context: ..
+      args:
+        MODULE: attendance-service
+    environment:
+      SERVER_PORT: 8080
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/attendance
+      SPRING_RABBITMQ_HOST: rabbitmq
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8084:8080"
+
+  # Hai kiosk để demo quét cùng một QR ở hai nơi (Issue 2).
+  # Kiosk phải chạy được khi RabbitMQ chưa lên hoặc mất WAN, nên chỉ chờ container khởi động.
+  kiosk-1:
+    build:
+      context: ..
+      args:
+        MODULE: kiosk-agent
+    environment:
+      SERVER_PORT: 8080
+      KIOSK_DB_PATH: /data/kiosk.db
+      KIOSK_KIOSKID: kiosk-1
+      KIOSK_SITEID: site-01
+      SPRING_RABBITMQ_HOST: rabbitmq
+    volumes:
+      - kiosk-1-data:/data
+    depends_on:
+      rabbitmq:
+        condition: service_started
+    ports:
+      - "8082:8080"
+
+  kiosk-2:
+    build:
+      context: ..
+      args:
+        MODULE: kiosk-agent
+    environment:
+      SERVER_PORT: 8080
+      KIOSK_DB_PATH: /data/kiosk.db
+      KIOSK_KIOSKID: kiosk-2
+      KIOSK_SITEID: site-01
+      SPRING_RABBITMQ_HOST: rabbitmq
+    volumes:
+      - kiosk-2-data:/data
+    depends_on:
+      rabbitmq:
+        condition: service_started
+    ports:
+      - "8083:8080"
+
+volumes:
+  postgres-data:
+  kiosk-1-data:
+  kiosk-2-data:

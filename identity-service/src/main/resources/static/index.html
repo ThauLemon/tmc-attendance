@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TMC - QR nhân viên</title>
+</head>
+<body>
+  <h1>employee-qr-web</h1>
+  <p>SKELETON. Trang này sẽ sinh và ký QR mỗi 15 giây bằng WebCrypto (Hưng), sau khi đăng nhập (Phú).</p>
+  <p>Lưu ý: WebCrypto (<code>crypto.subtle</code>) chỉ chạy trên HTTPS hoặc localhost.
+     Khi mở từ điện thoại phải dùng tunnel (cloudflared, ngrok) hoặc mkcert.</p>
+  <p id="crypto-check"></p>
+  <script>
+    document.getElementById('crypto-check').textContent =
+      window.crypto && window.crypto.subtle
+        ? 'crypto.subtle: có sẵn trên trình duyệt này.'
+        : 'crypto.subtle: KHÔNG có. Trang đang không chạy trên HTTPS.';
+  </script>
+</body>
+</html>

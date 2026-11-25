@@ -1,0 +1,22 @@
+# Maven
+target/
+
+# SQLite của kiosk khi chạy local
+*.db
+*.db-wal
+*.db-shm
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Log
+*.log

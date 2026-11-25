@@ -1,0 +1,28 @@
+server:
+  port: 8084
+
+spring:
+  application:
+    name: attendance-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/attendance
+    username: tmc
+    password: tmc
+  sql:
+    init:
+      mode: always
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: tmc
+    password: tmc
+    listener:
+      simple:
+        # Message lỗi sang dead-letter queue thay vì quay lại hàng đợi mãi.
+        default-requeue-rejected: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

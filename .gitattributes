@@ -1,0 +1,4 @@
+# Cả nhóm dùng Windows lẫn macOS/Linux: lưu file trong repo với LF để tránh diff toàn file.
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf
