@@ -3,18 +3,20 @@ package com.tmc.attendance.kiosk;
 import com.tmc.attendance.contracts.Direction;
 import com.tmc.attendance.contracts.GateResult;
 import com.tmc.attendance.contracts.IGateController;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import org.springframework.stereotype.Component;
 
 /**
  * Turnstile giả lập trong kiosk-agent (Hình 10 của M1). Thay được cho adapter phần cứng thật (LSP).
  * Đổi chế độ lúc chạy qua POST /api/simulator/mode để demo timeout.
  *
- * <p>TODO Nam: tra trạng thái theo transactionId cho quy trình đối soát (ADR-10).
  */
 @Component
 public class TurnstileSimulator implements IGateController {
 
     private volatile SimulatorMode mode;
+    private final ConcurrentMap<String, GateResult> transactionResults = new ConcurrentHashMap<>();
 
     public TurnstileSimulator(KioskProperties properties) {
         this.mode = properties.simulatorMode();
@@ -22,7 +24,7 @@ public class TurnstileSimulator implements IGateController {
 
     @Override
     public GateResult open(String transactionId, Direction direction) {
-        return switch (mode) {
+        return transactionResults.computeIfAbsent(transactionId, ignored -> switch (mode) {
             case OK -> {
                 pause(50);
                 yield GateResult.OPENED;
@@ -32,7 +34,12 @@ public class TurnstileSimulator implements IGateController {
                 yield GateResult.TIMEOUT;
             }
             case FAULT -> GateResult.FAULT;
-        };
+        });
+    }
+
+    @Override
+    public GateResult getStatus(String transactionId) {
+        return transactionResults.getOrDefault(transactionId, GateResult.TIMEOUT);
     }
 
     public SimulatorMode getMode() {
