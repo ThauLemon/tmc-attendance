@@ -1,35 +1,283 @@
 <!doctype html>
 <html lang="vi">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TMC Kiosk</title>
   <style>
-    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
-    input, select, button { font-size: 1rem; padding: .5rem; }
-    input { width: 100%; box-sizing: border-box; margin-bottom: .5rem; }
-    pre { background: #f4f4f4; padding: 1rem; white-space: pre-wrap; }
+    :root {
+      color-scheme: light;
+      font-family: system-ui, sans-serif;
+    }
+
+    body {
+      max-width: 640px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+      color: #172033;
+    }
+
+    h1 {
+      margin-bottom: .35rem;
+    }
+
+    p {
+      line-height: 1.5;
+    }
+
+    label {
+      display: block;
+      margin: 1rem 0 .4rem;
+      font-weight: 600;
+    }
+
+    input,
+    select,
+    button {
+      box-sizing: border-box;
+      min-height: 2.75rem;
+      padding: .6rem .75rem;
+      font: inherit;
+    }
+
+    input,
+    select {
+      width: 100%;
+      border: 1px solid #aeb8c8;
+      border-radius: .4rem;
+    }
+
+    button {
+      border: 0;
+      border-radius: .4rem;
+      background: #174ea6;
+      color: white;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      cursor: wait;
+      opacity: .6;
+    }
+
+    .secondary {
+      background: #48566c;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .6rem;
+      margin-top: 1rem;
+    }
+
+    #scanner {
+      margin-top: 1rem;
+      overflow: hidden;
+      border-radius: .5rem;
+      background: #101828;
+    }
+
+    video {
+      display: block;
+      width: 100%;
+      max-height: 60vh;
+      object-fit: cover;
+    }
+
+    #status {
+      min-height: 1.5rem;
+    }
+
+    #status[data-error="true"] {
+      color: #b42318;
+    }
+
+    pre {
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+      padding: 1rem;
+      border-radius: .4rem;
+      background: #f1f4f9;
+    }
   </style>
 </head>
+
 <body>
   <h1>Kiosk</h1>
-  <p>SKELETON: ô dán token (phương án dự phòng khi webcam không đọc được). TODO Nam: quét bằng webcam.</p>
-  <input id="token" placeholder="Dán QR token, ví dụ EMP:E0001">
-  <select id="direction"><option>IN</option><option>OUT</option></select>
-  <button id="scan">Quét</button>
-  <pre id="result"></pre>
+  <p>Quét mã QR bằng camera hoặc nhập token thủ công. Hình ảnh camera chỉ được gửi tới kiosk để đọc mã.</p>
+
+  <label for="direction">Chiều chấm công</label>
+  <select id="direction">
+    <option value="IN">Vào</option>
+    <option value="OUT">Ra</option>
+  </select>
+
+  <div class="actions">
+    <button id="start-camera" type="button">Bật camera và quét QR</button>
+    <button id="stop-camera" class="secondary" type="button" disabled>Dừng camera</button>
+  </div>
+  <div id="scanner" hidden>
+    <video id="preview" autoplay playsinline muted aria-label="Khung hình camera quét QR"></video>
+  </div>
+
+  <form id="manual-form">
+    <label for="token">Hoặc nhập token QR</label>
+    <input id="token" name="token" placeholder="Ví dụ: EMP:E0001" autocomplete="off" autocapitalize="off"
+      spellcheck="false" required>
+    <button type="submit">Gửi lượt quét</button>
+  </form>
+
+  <p id="status" role="status" aria-live="polite"></p>
+  <pre id="result" aria-live="polite"></pre>
+
   <script>
-    document.getElementById('scan').addEventListener('click', async () => {
-      const res = await fetch('/api/scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token: document.getElementById('token').value,
-          direction: document.getElementById('direction').value
-        })
+    const startButton = document.getElementById('start-camera');
+    const stopButton = document.getElementById('stop-camera');
+    const scanner = document.getElementById('scanner');
+    const preview = document.getElementById('preview');
+    const tokenInput = document.getElementById('token');
+    const directionInput = document.getElementById('direction');
+    const status = document.getElementById('status');
+    const result = document.getElementById('result');
+    const frameCanvas = document.createElement('canvas');
+    let cameraStream = null;
+
+    function showStatus(message, isError = false) {
+      status.textContent = message;
+      status.dataset.error = String(isError);
+    }
+
+    function stopCamera() {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        cameraStream = null;
+      }
+      preview.srcObject = null;
+      scanner.hidden = true;
+      startButton.disabled = false;
+      stopButton.disabled = true;
+    }
+
+    async function submitToken(token) {
+      const cleanToken = token.trim();
+      if (!cleanToken) {
+        showStatus('Vui lòng quét mã QR hoặc nhập token.', true);
+        return;
+      }
+
+      result.textContent = '';
+      showStatus('Đang xử lý lượt quét...');
+      try {
+        const response = await fetch('/api/scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token: cleanToken,
+            direction: directionInput.value
+          })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data?.message || `Máy chủ trả về lỗi ${response.status}`);
+        }
+        result.textContent = JSON.stringify(data, null, 2);
+        showStatus(data.status === 'REJECTED' ? 'Token bị từ chối.' : 'Đã nhận kết quả lượt quét.');
+      } catch (error) {
+        showStatus(`Không gửi được lượt quét: ${error.message}`, true);
+      }
+    }
+
+    async function scanFrames(stream, detector) {
+      while (cameraStream === stream) {
+        if (preview.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+          try {
+            const token = await detector.decode(preview, frameCanvas);
+            if (token) {
+              stopCamera();
+              tokenInput.value = token;
+              await submitToken(token);
+              return;
+            }
+          } catch (error) {
+            stopCamera();
+            showStatus(`Không đọc được QR: ${error.message}`, true);
+            return;
+          }
+        }
+        await new Promise(resolve => setTimeout(resolve, 120));
+      }
+    }
+
+    function encodeFrame(video, canvas) {
+      const maxWidth = 640;
+      const scale = Math.min(1, maxWidth / video.videoWidth);
+      canvas.width = Math.round(video.videoWidth * scale);
+      canvas.height = Math.round(video.videoHeight * scale);
+      canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+      return new Promise((resolve, reject) => {
+        canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Không tạo được ảnh từ camera.')),
+          'image/jpeg', 0.7);
       });
-      document.getElementById('result').textContent = JSON.stringify(await res.json(), null, 2);
+    }
+
+    const detector = {
+      async decode(video, canvas) {
+        const frame = await encodeFrame(video, canvas);
+        const response = await fetch('/api/qr/decode', {
+          method: 'POST',
+          headers: { 'Content-Type': 'image/jpeg' },
+          body: frame
+        });
+        if (response.status === 204) return null;
+        if (!response.ok) throw new Error(`Kiosk không đọc được ảnh (HTTP ${response.status}).`);
+        return (await response.json()).token;
+      }
+    };
+
+    startButton.addEventListener('click', async () => {
+      startButton.disabled = true;
+      showStatus('Đang khởi động camera...');
+      try {
+        if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+          throw new Error('Camera cần HTTPS. Trên iPhone hãy mở kiosk bằng địa chỉ HTTPS và cho phép quyền camera.');
+        }
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } },
+          audio: false
+        });
+        preview.srcObject = cameraStream;
+        scanner.hidden = false;
+        stopButton.disabled = false;
+        await preview.play();
+        showStatus('Đưa mã QR vào khung hình để quét.');
+        scanFrames(cameraStream, detector).catch(error => {
+          stopCamera();
+          showStatus(`Không quét được QR: ${error.message}`, true);
+        });
+      } catch (error) {
+        stopCamera();
+        if (error.name === 'NotAllowedError') {
+          showStatus('Chưa được cấp quyền camera. Cho phép camera cho trang này trong cài đặt trình duyệt.', true);
+        } else if (error.name === 'NotFoundError') {
+          showStatus('Không tìm thấy camera trên thiết bị.', true);
+        } else {
+          showStatus(error.message, true);
+        }
+      }
+    });
+
+    stopButton.addEventListener('click', () => {
+      stopCamera();
+      showStatus('Đã dừng camera.');
+    });
+
+    document.getElementById('manual-form').addEventListener('submit', event => {
+      event.preventDefault();
+      submitToken(tokenInput.value);
     });
   </script>
 </body>
+
 </html>

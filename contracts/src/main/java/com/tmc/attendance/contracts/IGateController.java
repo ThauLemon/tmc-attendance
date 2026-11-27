@@ -7,4 +7,11 @@ package com.tmc.attendance.contracts;
 public interface IGateController {
 
     GateResult open(String transactionId, Direction direction);
+
+    /**
+     * Tra cứu kết quả đã biết của một giao dịch. TIMEOUT biểu thị chưa thể xác nhận kết quả.
+     */
+    default GateResult getStatus(String transactionId) {
+        return GateResult.TIMEOUT;
+    }
 }
